@@ -5,20 +5,23 @@ import math
 import queue
 import threading
 import time
+import webbrowser
 from collections import deque
 from dataclasses import dataclass
+from pathlib import Path
 
 import pygame
 
-from src.anim import distance_based_duration
-from src.caching import Pool, cache
-from src.cards import load_card
-from src.easing import EASE_OUT, EasingType, ease
-from src.events import draw, event, handle_events
+import pygame_textinput as pygame_textinput
+from anim import distance_based_duration
+from caching import Pool, cache
+from cards import load_card
+from easing import EASE_OUT, EasingType, ease
+from events import draw, event, handle_events
 from logging import Logger, LogLevel
-from src.net import WebSocketConnection, connect_websocket
+from net import WebSocketConnection, connect_websocket
 import sys
-from src.shared import (
+from shared import (
     card_face,
     card_rank,
     format_cards,
@@ -69,6 +72,7 @@ MUTED = (192, 198, 190)
 BLACK = (18, 18, 18)
 PLAY_ANIM_DURATION = 0.18
 DRAW_ANIM_DURATION = 0.16
+MENU_BUTTON_SIZE = (340, 68)
 
 @dataclass
 class Tween:
@@ -196,12 +200,23 @@ class GameClient:
 
         self.players: list[str] = []
         self.bot_seats: set[str] = set()
-        self.phase = "pregame"
+        self.phase = "menu"
+        self.menu_screen = "main"
         self.turn_player: str | None = None
         self.turn_deadline: float | None = None
-        self.status = "Connecting"
+        self.status = "Main Menu"
         self.ready = False
         self.reorder_done = False
+        self.room_code: str | None = None
+        self.fill_bots_enabled = True
+        self.ready_by_player: dict[str, bool] = {}
+        self.auto_ready_after_join = False
+        self.auto_done_reorder_once = False
+        self.pending_auto_done_reorder = False
+        self.pending_room_join = False
+        self.pending_join_code = ""
+        self.join_error: str | None = None
+        self.tutorial_thread: threading.Thread | None = None
 
         self.self_hand: list[str] = []
         self.self_visible: list[str] = []
@@ -244,8 +259,9 @@ class GameClient:
         self.body_font = pygame.font.SysFont("DejaVu Sans", 20)
         self.small_font = pygame.font.SysFont("DejaVu Sans", 18)
         self.big_font = pygame.font.SysFont("DejaVu Sans", 52, bold=True)
+        self.join_input = pygame_textinput.TextInputVisualizer(font_object=self.title_font)
 
-        self.send(f"JOIN_GAME | {name}")
+        self.push_message("Choose a mode from the main menu.")
 
     def _recv_loop(self) -> None:
         try:
@@ -273,6 +289,84 @@ class GameClient:
         command, _, rest = line.partition(" ")
         return command.upper(), [rest.strip()] if rest.strip() else []
 
+    def _reset_for_lobby(self) -> None:
+        self.phase = "pregame"
+        self.ready = False
+        self.reorder_done = False
+        self.turn_player = None
+        self.turn_deadline = None
+        self.ready_by_player.clear()
+        self.pending_auto_done_reorder = False
+        self.self_hand.clear()
+        self.self_visible.clear()
+        self.self_hidden_count = 3
+        self.visible_by_player.clear()
+        self.hand_counts.clear()
+        self.hidden_counts.clear()
+        self.pile.clear()
+        self.draw_pile_size = 0
+        self.finished.clear()
+        self.game_over_text = None
+        self.selected = None
+        self.selected_at = 0.0
+        self.last_card_click = (None, False, 0.0)
+        self.play_animations.clear()
+        self.draw_animations.clear()
+
+    def _request_create_room(self, fill_with_bots: bool) -> None:
+        self.fill_bots_enabled = fill_with_bots
+        self.pending_room_join = True
+        self.pending_join_code = ""
+        self.join_error = None
+        self.send(f"CREATE_ROOM | {1 if fill_with_bots else 0}")
+
+    def _request_join_room(self, room_code: str) -> None:
+        code = room_code.strip().upper()
+        if not code:
+            self.join_error = "Enter room code."
+            return
+        self.pending_room_join = True
+        self.pending_join_code = code
+        self.join_error = None
+        self.send(f"ROOM | {code}")
+
+    def _join_current_room(self) -> None:
+        self.send(f"JOIN_GAME | {self.self_name}")
+        self._reset_for_lobby()
+        self.menu_screen = "lobby"
+
+    def _maybe_auto_reorder_done(self) -> None:
+        if (
+            self.pending_auto_done_reorder
+            and self.phase == "reorder"
+            and len(self.self_hand) == 5
+            and len(self.self_visible) == 3
+            and not self.reorder_done
+        ):
+            self.send_reorder_done()
+            self.pending_auto_done_reorder = False
+
+    def _start_tutorial(self) -> None:
+        if self.tutorial_thread and self.tutorial_thread.is_alive():
+            return
+
+        def run() -> None:
+            rules_path = (Path(__file__).resolve().parent.parent / "docs" / "RULES.html").resolve()
+            url = rules_path.as_uri()
+            try:
+                import webview  # type: ignore
+
+                window = webview.create_window("Card Game Tutorial", url, width=980, height=740)
+                webview.start(gui="qt")
+                if window is not None:
+                    return
+            except Exception:
+                pass
+            webbrowser.open(url)
+
+        self.tutorial_thread = threading.Thread(target=run, daemon=True)
+        self.tutorial_thread.start()
+
     def process_network(self) -> None:
         while True:
             try:
@@ -284,13 +378,38 @@ class GameClient:
 
             command, args = self.parse_message(line)
 
+            if command == "ROOM" and args:
+                self.room_code = args[0].strip().upper()
+                if self.pending_room_join:
+                    self.pending_room_join = False
+                    self._join_current_room()
+                elif self.phase == "menu":
+                    self.menu_screen = "lobby"
+                self.push_message(f"Room {self.room_code}")
+
+            elif command == "LOBBY_FILL_BOTS" and args:
+                self.fill_bots_enabled = args[0].strip() in {"1", "true", "TRUE", "on", "ON"}
+
+            elif command == "READY_STATE" and len(args) >= 2:
+                value = args[1].strip() in {"1", "true", "TRUE", "on", "ON"}
+                self.ready_by_player[args[0]] = value
+                if args[0] == self.self_name:
+                    self.ready = value
+
             if command == "PLAYERS" and args:
                 self.players = [name for name in args[0].split(",") if name]
                 self._prune_removed_players()
+                if self.phase == "menu" and self.self_name in self.players:
+                    self.phase = "pregame"
+                    self.menu_screen = "lobby"
+                if self.phase == "pregame" and self.auto_ready_after_join and self.self_name in self.players and not self.ready:
+                    self.send_ready()
+                    self.auto_ready_after_join = False
 
             elif command == "START_GAME":
                 self.phase = "reorder"
                 self.reorder_done = False
+                self.pending_auto_done_reorder = self.auto_done_reorder_once
                 self.selected = None
                 self.selected_at = 0.0
                 self.last_card_click = (None, False, 0.0)
@@ -324,6 +443,7 @@ class GameClient:
                 self.visible_by_player[name] = cards
                 if name == self.self_name:
                     self.self_visible = cards
+                    self._maybe_auto_reorder_done()
 
             elif command == "HAND_COUNT" and len(args) >= 2:
                 self.hand_counts[args[0]] = int(args[1])
@@ -336,6 +456,7 @@ class GameClient:
             elif command == "HAND" and args:
                 self.self_hand = parse_cards(args[0])
                 self.self_hand = sort_hand(self.self_hand)
+                self._maybe_auto_reorder_done()
 
             elif command == "PLAY" and len(args) >= 2:
                 self._queue_play_animation(args[0], parse_cards(args[1]), hidden=False)
@@ -386,7 +507,11 @@ class GameClient:
                 self.push_message(f"{name} left before the game started.")
 
             elif command == "INVALID" and args:
-                self.push_message(args[0])
+                message = args[0]
+                if self.pending_room_join:
+                    self.pending_room_join = False
+                    self.join_error = message
+                self.push_message(message)
 
             elif command == "READY":
                 self.ready = True
@@ -401,6 +526,7 @@ class GameClient:
         self.hidden_counts = {name: count for name, count in self.hidden_counts.items() if name in allowed}
         self.bot_seats = {name for name in self.bot_seats if name in allowed}
         self.finished = {name: placement for name, placement in self.finished.items() if name in allowed}
+        self.ready_by_player = {name: value for name, value in self.ready_by_player.items() if name in allowed}
 
     def _apply_play(self, player: str, cards: list[str], hidden: bool) -> None:
         for token in cards:
@@ -560,6 +686,10 @@ class GameClient:
     def send_draw(self) -> None:
         self.send("DRAW")
 
+    def send_fill_bots(self, enabled: bool) -> None:
+        self.fill_bots_enabled = enabled
+        self.send(f"SET_FILL_BOTS | {1 if enabled else 0}")
+
     def _selection_from_card(self, token: str) -> dict[str, object] | None:
         if token in self.self_hand or token in self.self_visible:
             return {"kind": "card", "tokens": [token]}
@@ -614,17 +744,87 @@ class GameClient:
         )
         return best
 
+    def _handle_menu_mouse_down(self, pos: tuple[int, int]) -> None:
+        if self.menu_screen == "main":
+            if self._click_button("menu_play", pos):
+                self.menu_screen = "play"
+                return
+            if self._click_button("menu_bot", pos):
+                self.auto_ready_after_join = True
+                self.auto_done_reorder_once = False
+                self._request_create_room(True)
+                return
+            if self._click_button("menu_tutorial", pos):
+                self._start_tutorial()
+                return
+            if self._click_button("menu_quit", pos):
+                self.running = False
+                return
+            return
+
+        if self.menu_screen == "play":
+            if self._click_button("play_join", pos):
+                self.menu_screen = "join_room"
+                self.join_error = None
+                self.join_input.value = ""
+                return
+            if self._click_button("play_create", pos):
+                self.auto_ready_after_join = False
+                self.auto_done_reorder_once = False
+                self._request_create_room(True)
+                return
+            if self._click_button("play_back", pos):
+                self.menu_screen = "main"
+                return
+            return
+
+        if self.menu_screen == "join_room":
+            if self._click_button("join_confirm", pos):
+                self.auto_ready_after_join = False
+                self.auto_done_reorder_once = False
+                self._request_join_room(self.join_input.value)
+                return
+            if self._click_button("join_cancel", pos):
+                self.menu_screen = "play"
+                self.join_error = None
+                return
+
+    def handle_keydown(self, event: pygame.event.Event) -> None:
+        if self.phase == "menu" and self.menu_screen == "join_room":
+            self.join_input.update([event])
+            self.join_input.value = self.join_input.value.upper()[:8]
+            if event.key == pygame.K_RETURN:
+                self.auto_ready_after_join = False
+                self.auto_done_reorder_once = False
+                self._request_join_room(self.join_input.value)
+            return
+
+        if event.key == pygame.K_ESCAPE:
+            if self.phase == "menu":
+                if self.menu_screen == "join_room":
+                    self.menu_screen = "play"
+                    self.join_error = None
+                    return
+                if self.menu_screen == "play":
+                    self.menu_screen = "main"
+                    return
+            self.running = False
+
     def handle_mouse_down(self, pos: tuple[int, int]) -> None:
+        if self.phase == "menu":
+            self._handle_menu_mouse_down(pos)
+            return
+
         if self.phase == "reorder" and self.reorder_done:
+            return
+        if self.phase == "pregame" and self._click_button("fill_bots", pos):
+            self.send_fill_bots(not self.fill_bots_enabled)
             return
         if self._click_button("ready", pos):
             self.send_ready()
             return
         if self._click_button("done", pos):
             self.send_reorder_done()
-            return
-        if self._click_button("sort", pos):
-            self.sort_hand_local()
             return
         if self._click_button("play", pos):
             self.send_play()
@@ -1096,10 +1296,6 @@ class GameClient:
                 for _cx, _cy, image, rect, _token in sorted(hand_draws, key=lambda item: (item[0], item[1])):
                     surface.blit(image, rect)
 
-            self.buttons["sort"] = pygame.Rect(
-                int(hand_center[0] - 320), int(hand_center[1] - 24), 92, 48
-            )
-
         elif hand_count:
             back_show = min(hand_count, 5)
             back_scale = 0.80
@@ -1274,18 +1470,35 @@ class GameClient:
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
         overlay.fill((8, 18, 14, 150))
         surface.blit(overlay, (0, 0))
-        banner = pygame.Rect(0, 0, 460, 140)
+
+        rankings = sorted(self.finished.items(), key=lambda item: item[1])
+        winner_name = rankings[0][0] if rankings else ""
+
+        banner_height = 140 + max(0, len(rankings) - 1) * 32
+        banner = pygame.Rect(0, 0, 460, banner_height)
         banner.center = (width // 2, height // 2 - 30)
         rounded_panel(surface, banner, PANEL, 22, 240)
         pygame.draw.rect(surface, GOLD, banner, 3, border_radius=22)
         draw_text(
             surface,
             self.big_font,
-            self.game_over_text or "Game Over",
-            (banner.centerx, banner.centery - 8),
+            f"Winner: {winner_name}",
+            (banner.centerx, banner.y + 40),
             WHITE,
             center=True,
         )
+        for offset, (name, place) in enumerate(rankings):
+            if offset == 0:
+                continue
+            suffix = {1: "st", 2: "nd", 3: "rd"}.get(place, "th")
+            draw_text(
+                surface,
+                self.body_font,
+                f"{place}{suffix}: {name}",
+                (banner.centerx, banner.y + 80 + (offset - 1) * 32),
+                MUTED,
+                center=True,
+            )
 
     def draw_top_bars(self, surface: pygame.Surface) -> None:
         width, _height = surface.get_size()
@@ -1323,6 +1536,13 @@ class GameClient:
             center=True,
         )
 
+        if self.room_code:
+            room_rect = pygame.Rect(0, 0, 220, 44)
+            room_rect.center = (width // 2, 86)
+            rounded_panel(surface, room_rect, PANEL, 14, 230)
+            pygame.draw.rect(surface, GOLD, room_rect, 2, border_radius=14)
+            draw_text(surface, self.small_font, f"Room {self.room_code}", room_rect.center, MUTED, center=True)
+
     def draw_notifications(self, surface: pygame.Surface) -> None:
         now = time.monotonic()
         _width, height = surface.get_size()
@@ -1343,9 +1563,92 @@ class GameClient:
             surface.blit(panel, (18, y - 2))
             y -= 30
 
+    def _menu_button(
+        self,
+        surface: pygame.Surface,
+        key: str,
+        label: str,
+        center: tuple[int, int],
+        color: tuple[int, int, int],
+    ) -> None:
+        rect = pygame.Rect(0, 0, *MENU_BUTTON_SIZE)
+        rect.center = center
+        self.buttons[key] = rect
+        rounded_panel(surface, rect, color, 18, 242)
+        pygame.draw.rect(surface, GOLD, rect, 2, border_radius=18)
+        draw_text(surface, self.title_font, label, rect.center, WHITE, center=True)
+
+    def draw_menu(self, surface: pygame.Surface) -> None:
+        width, height = surface.get_size()
+        self.buttons.clear()
+
+        title_rect = pygame.Rect(0, 0, 580, 100)
+        title_rect.center = (width // 2, 130)
+        rounded_panel(surface, title_rect, PANEL, 22, 230)
+        pygame.draw.rect(surface, GOLD, title_rect, 2, border_radius=22)
+        draw_text(surface, self.big_font, "Card Game", title_rect.center, WHITE, center=True)
+
+        if self.menu_screen == "main":
+            start_y = 270
+            spacing = 94
+            self._menu_button(surface, "menu_play", "Play", (width // 2, start_y), BLUE)
+            self._menu_button(surface, "menu_bot", "Play Vs. Computer", (width // 2, start_y + spacing), PANEL_SOFT)
+            self._menu_button(surface, "menu_tutorial", "Tutorial", (width // 2, start_y + spacing * 2), PANEL_SOFT)
+            self._menu_button(surface, "menu_quit", "Quit", (width // 2, start_y + spacing * 3), RED)
+            return
+
+        if self.menu_screen == "play":
+            subtitle = "Create or join a room"
+            draw_text(surface, self.body_font, subtitle, (width // 2, 200), MUTED, center=True)
+            self._menu_button(surface, "play_join", "Join Room", (width // 2, 320), BLUE)
+            self._menu_button(surface, "play_create", "Create Room", (width // 2, 414), PANEL_SOFT)
+            self._menu_button(surface, "play_back", "Back", (width // 2, 508), PANEL)
+            return
+
+        if self.menu_screen == "join_room":
+            panel = pygame.Rect(0, 0, 620, 320)
+            panel.center = (width // 2, height // 2)
+            rounded_panel(surface, panel, PANEL, 22, 238)
+            pygame.draw.rect(surface, GOLD, panel, 2, border_radius=22)
+
+            draw_text(surface, self.title_font, "Join Room", (panel.centerx, panel.y + 44), WHITE, center=True)
+            draw_text(surface, self.body_font, "Enter lobby code", (panel.centerx, panel.y + 88), MUTED, center=True)
+
+            input_rect = pygame.Rect(panel.x + 80, panel.y + 126, panel.width - 160, 62)
+            rounded_panel(surface, input_rect, PANEL_SOFT, 14, 245)
+            pygame.draw.rect(surface, BLUE, input_rect, 2, border_radius=14)
+            self.join_input.update([])
+            input_surface = self.join_input.surface
+            input_pos = (
+                input_rect.x + 16,
+                input_rect.y + (input_rect.height - input_surface.get_height()) // 2,
+            )
+            surface.blit(input_surface, input_pos)
+
+            confirm_rect = pygame.Rect(panel.x + 80, panel.y + 214, 210, 58)
+            cancel_rect = pygame.Rect(panel.right - 290, panel.y + 214, 210, 58)
+            self.buttons["join_confirm"] = confirm_rect
+            self.buttons["join_cancel"] = cancel_rect
+            rounded_panel(surface, confirm_rect, BLUE, 14, 245)
+            rounded_panel(surface, cancel_rect, PANEL_SOFT, 14, 245)
+            pygame.draw.rect(surface, GOLD, confirm_rect, 2, border_radius=14)
+            pygame.draw.rect(surface, GOLD, cancel_rect, 2, border_radius=14)
+            draw_text(surface, self.body_font, "Join", confirm_rect.center, WHITE, center=True)
+            draw_text(surface, self.body_font, "Cancel", cancel_rect.center, WHITE, center=True)
+
+            if self.join_error:
+                draw_text(surface, self.small_font, self.join_error, (panel.centerx, panel.bottom - 26), RED, center=True)
+            return
+
     def draw(self) -> None:
         width, height = self.window.get_size()
         self.draw_background(self.window)
+        if self.phase == "menu":
+            self.draw_menu(self.window)
+            self.draw_notifications(self.window)
+            pygame.display.flip()
+            return
+
         self.card_rects.clear()
         self.hidden_rects.clear()
 
@@ -1378,6 +1681,20 @@ class GameClient:
                 "READY",
                 ready_rect.center,
                 BLACK if not self.ready else WHITE,
+                center=True,
+            )
+
+            fill_rect = pygame.Rect(width // 2 + 122, 20, 236, 50)
+            self.buttons["fill_bots"] = fill_rect
+            rounded_panel(self.window, fill_rect, PANEL, 14, 240)
+            pygame.draw.rect(self.window, BLUE, fill_rect, 2, border_radius=14)
+            check = "[x]" if self.fill_bots_enabled else "[ ]"
+            draw_text(
+                self.window,
+                self.small_font,
+                f"{check} Fill With Bots",
+                (fill_rect.centerx, fill_rect.centery),
+                WHITE,
                 center=True,
             )
 
@@ -1441,8 +1758,7 @@ class GameClient:
                         WHITE,
                         center=True,
                     )
-
-                self.draw_game_over(self.window)
+        self.draw_game_over(self.window)
 
         pygame.display.flip()
 
@@ -1489,8 +1805,8 @@ def _on_mouse_motion(event: pygame.event.Event) -> None:
 
 @event(pygame.KEYDOWN)
 def _on_keydown(event: pygame.event.Event) -> None:
-    if CLIENT is not None and event.key == pygame.K_ESCAPE:
-        CLIENT.running = False
+    if CLIENT is not None:
+        CLIENT.handle_keydown(event)
 
 @draw
 def _draw_frame() -> None:

@@ -48,7 +48,11 @@ The player is replaced with a bot.
   - If there is a pair, score them as their product.
   - If there is a triple, score them as 100.
 - Always play lowest legal card (excluding 2 and 10)
-- Always play as many cards of a rank as possible
+- Always play as many cards of a rank as possible, unless the rank of that card is K or higher.
+- If the next player has only visible cards and the bot can force them to draw, it will. (only play one)
+- If the next player has 3 hidden cards, the bot will play the middle rank in their hand. (only play one)
+- If the next player has less than 3 hidden cards, the bot will play the highest rank. (only play one)
+- Dont play two 10s at once.
 - If cant play anything:
   - If draw pile has more than 1 card, play 2
   - Otherwise play 10

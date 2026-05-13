@@ -11,7 +11,7 @@ Non-blocking:
 import time
 import threading
 from functools import wraps
-from src.easing import ease, EasingType
+from easing import ease, EasingType
 
 
 def distance_based_duration(easing_time: float = 0.05, middle_time_per_unit: float = 0.005):

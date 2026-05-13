@@ -57,6 +57,7 @@ Before the first turn, players can swap cards between their hand and visible car
 
 - Hidden cards are played face-down; you cannot see what rank they are until played
 - You choose which face-down hidden card to play (but don't know its rank beforehand)
+- If a hidden or visible card is played and it cannot legally be placed on the pile, you draw the pile. The failed card itself does **not** stay on the pile; instead, that card and **all cards you still own of the same rank** are taken into your hand together with the pile.
 
 ### Card Play Sequence
 
@@ -118,6 +119,8 @@ Example: If you have 2 Kings in hand and there are 2 Kings in your visible cards
 - Hidden cards, visible cards, and hand cards are used in order (hand → visible → hidden), but only one play action may be performed per turn regardless of card source.
 
 - If a player cannot make a legal play action, they must draw the entire play pile and end their turn.
+
+- If a hidden or visible card is played illegally (cannot be placed on the current pile), the player draws the entire pile, and also collects the failed card plus every card they still own of that same rank into their hand.
 
 - The play pile is cleared only by a 10 or a completed 4-of-a-kind, and otherwise persists between turns as a single stack.
 

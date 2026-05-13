@@ -1,0 +1,152 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #0a0a0a;
+    overflow: hidden;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: white;
+}
+
+#gameCanvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+}
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-content {
+    background: linear-gradient(135deg, #1a1f2e 0%, #1e2535 100%);
+    padding: 2.5rem;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    border: 2px solid #3a4a6b;
+    min-width: 400px;
+    max-width: 90%;
+}
+
+.modal-content h2 {
+    margin-bottom: 1.5rem;
+    text-align: center;
+    color: #f0f0f0;
+    font-size: 1.8rem;
+    font-weight: 600;
+}
+
+.modal-content p {
+    margin-bottom: 1rem;
+    text-align: center;
+    color: #b0b8c4;
+    font-size: 1.1rem;
+}
+
+.modal-content .code {
+    font-family: 'Courier New', monospace;
+    font-size: 1.4rem;
+    color: #5bb3ff;
+    background: rgba(91, 179, 255, 0.1);
+    padding: 0.3rem 0.8rem;
+    border-radius: 6px;
+    display: inline-block;
+    margin: 0.5rem 0;
+}
+
+.input-group {
+    margin-bottom: 1.5rem;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #b0b8c4;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 0.9rem 1rem;
+    border: 2px solid #3a4a6b;
+    border-radius: 10px;
+    background: #0f1420;
+    color: white;
+    font-size: 1rem;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-group input:focus {
+    border-color: #5bb3ff;
+    box-shadow: 0 0 0 3px rgba(91, 179, 255, 0.15);
+}
+
+.btn {
+    width: 100%;
+    padding: 1rem;
+    border: none;
+    border-radius: 10px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-top: 0.5rem;
+}
+
+.btn.primary {
+    background: linear-gradient(135deg, #3a7bd5 0%, #5bb3ff 100%);
+    color: white;
+}
+
+.btn.primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(91, 179, 255, 0.3);
+}
+
+.btn.primary:active {
+    transform: translateY(0);
+}
+
+.notification {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    max-width: 400px;
+    padding: 1rem 1.2rem;
+    background: rgba(30, 37, 53, 0.95);
+    border-left: 4px solid #5bb3ff;
+    border-radius: 8px;
+    color: white;
+    font-size: 0.95rem;
+    animation: slideIn 0.3s ease-out;
+    z-index: 999;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}

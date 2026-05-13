@@ -1,12 +1,26 @@
+*room selection (required before game join)*
+c2s: CREATE_ROOM <fill_bots 0|1>
+  (creates room, default fill_bots=1 if omitted)
+c2s: ROOM <room_code>
+  (select existing room)
+s2c: ROOM <room_code>
+  (selected room context)
 
 *on game join*
 c2s: JOIN_GAME <username>
 s2c: PLAYERS <p1>,<p2>,...
+s2c: LOBBY_FILL_BOTS <0|1>
+s2c: READY_STATE <player name> <0|1>
+
+*on lobby bot-fill toggle*
+c2s: SET_FILL_BOTS <0|1>
+s2c: LOBBY_FILL_BOTS <0|1>
 
 *on player pressed ready button*
 c2s: READY
+s2c: READY_STATE <player name> <0|1>
 
-*after all clients ready*
+*after all lobby players ready*
 s2c: START_GAME
 
 *on visible cards update*
@@ -16,7 +30,7 @@ s2c: VISIBLE <player name> <visible1> <visible2> <visible3>
 s2c: HAND <hand1> <hand2> <hand3> <hand4> <hand5>
 
 *on client card reorder*
-c2s: REORDER <hand1> <hand2> <hand3> <hand4> <hand5>
+c2s: REORDER <hand1>,<hand2>,<hand3>,<hand4>,<hand5> | <visible1>,<visible2>,<visible3>
 
 *on player done with swapping cards*
 c2s: REORDER_DONE
@@ -28,11 +42,8 @@ s2c: BEGIN
 s2c: TURN_START <player name>
 
 *on client play card*
-c2s: PLAY <card1>, <card2>, ...
-  (private)
-s2c: NEW_CARDS <new card1>, <new card2>, ...
-  (global)
-s2c: PLAY <player name> <card1>, <card2>, ...
+c2s: PLAY <card1>,<card2>,...
+s2c: PLAY <player name> <card1>,<card2>,...
 s2c: PILE_UPDATE <pile top card> <pile size>
 s2c: DRAW_PILE_SIZE <size>
 
@@ -40,33 +51,36 @@ s2c: DRAW_PILE_SIZE <size>
 s2c: INVALID <err message / reason>
   (client gets to try again, except failed hidden plays)
 
-*on other client card play*
-s2c: PLAY <player name> <card1>, <card2>, ...
-s2c: PILE_UPDATE <pile top card> <pile size>
-s2c: DRAW_PILE_SIZE <size>
-
 *on draw play pile (server enforced)*
 s2c: DRAW_ALL <player name>
+
+*on draw from deck*
+s2c: DRAW_CARDS <player name> <count>
 
 *on pile clear*
 s2c: PILE_CLEAR <player name>
 
 *on win (server enforced)*
 s2c: PLAYER_WIN <player name> <placement idx>
+s2c: GAME_OVER <winner name>
 
-*on player quit*
+*on player quit / disconnect replacement*
 c2s: QUIT
 s2c: PLAYER_QUIT <player name>
 
+*on player leave before game start*
+s2c: PLAYER_LEFT <player name> <reason>
+
 *on hidden card play*
 c2s: PLAY_HIDDEN <index>
-s2c: PLAY_HIDDEN <player name> <card1>, <card2>, ...
+s2c: PLAY_HIDDEN <player name> <card1>,<card2>,...
 
 *on hidden card misplay (server enforced)*
-  (server reveals the hidden play, waits ~300ms, then forces draw)
+  (server reveals hidden play, waits ~300ms, then forces draw)
 s2c: DRAW_ALL <player name>
 s2c: PILE_CLEAR <player name>
 
 DATA_TYPES:
+<room_code>:   String [A-Z0-9]{4,8}
 <player name>: String [A-Za-z0-9_ ]{4-20}
 <card>:        String <suit><rank>
