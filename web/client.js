@@ -24,7 +24,27 @@ const MENU_BUTTON_SIZE = { width: 340, height: 68 };
 const PLAY_ANIM_DURATION = 0.18;
 const DRAW_ANIM_DURATION = 0.16;
 const DRAG_THRESHOLD = 8;
+const TOUCH_DRAG_THRESHOLD = 14;
 const DOUBLE_CLICK_WINDOW = 0.35;
+
+// Mobile / responsive support
+let sc = 1.0; // current render scale factor – updated each frame
+let isTouchInteraction = false;
+
+function getScale(width, height) {
+    return Math.min(1.0, Math.min(width, height) / 600);
+}
+
+// Scale a pixel value by the current render scale
+function sz(n) {
+    return Math.round(n * sc);
+}
+
+// Return a scaled CSS font string
+function sfont(px, weight) {
+    const s = Math.round(px * Math.max(0.78, sc));
+    return weight ? `${weight} ${s}px "DejaVu Sans", sans-serif` : `${s}px "DejaVu Sans", sans-serif`;
+}
 
 const SUITS = ['C', 'D', 'S', 'H'];
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K'];
@@ -300,7 +320,7 @@ function centerPoint(rect) {
 
 function playPileCenter(width, height) {
     return {
-        x: width / 2 + 20,
+        x: width / 2 + sz(20),
         y: height / 2,
     };
 }
@@ -308,7 +328,7 @@ function playPileCenter(width, height) {
 function playerSourceCenter(player) {
     const slot = state.slotLayout[player];
     if (slot) {
-        return centerPoint({ x: slot.panel.x - 140, y: slot.panel.y - 43, width: 280, height: 86 });
+        return centerPoint({ x: slot.panel.x - sz(140), y: slot.panel.y - sz(43), width: sz(280), height: sz(86) });
     }
     const width = window.innerWidth;
     const height = window.innerHeight;
@@ -395,8 +415,8 @@ function playerLayoutShell(playerCount, width, height) {
     const centerY = height * 0.5;
     const outerRx = width * 0.31;
     const outerRy = height * 0.29;
-    const visibleGap = 52.0;
-    const handGap = 142.0;
+    const visibleGap = 52.0 * sc;
+    const handGap = 142.0 * sc;
     const sideCardEdgePush = width * 0.08;
     const verticalPanelPull = height * 0.062;
 
@@ -432,6 +452,14 @@ function playerLayoutShell(playerCount, width, height) {
             x: cardAnchor.x + radialX * handGap,
             y: cardAnchor.y + radialY * handGap,
         };
+
+        // Clamp hand/visible positions so cards stay on screen
+        const halfCardW = sz(PLAY_CARD_SIZE.width / 2) + 4;
+        const halfCardH = sz(PLAY_CARD_SIZE.height / 2) + 4;
+        handCenter.x = clamp(handCenter.x, halfCardW, width - halfCardW);
+        handCenter.y = clamp(handCenter.y, halfCardH, height - halfCardH);
+        visibleCenter.x = clamp(visibleCenter.x, halfCardW, width - halfCardW);
+        visibleCenter.y = clamp(visibleCenter.y, halfCardH, height - halfCardH);
 
         shell.push({
             panel: panelCenter,
@@ -899,28 +927,28 @@ function drawPanel(rect, title, subtitle, active) {
     roundedRectPath(ctx, rect.x, rect.y, rect.width, rect.height, 18);
     ctx.stroke();
     if (title) {
-        drawText(title, rect.x + 16, rect.y + 28, COLORS.WHITE, { font: '20px "DejaVu Sans", sans-serif' });
+        drawText(title, rect.x + sz(16), rect.y + sz(28), COLORS.WHITE, { font: sfont(20) });
     }
     if (subtitle) {
-        drawText(subtitle, rect.x + 16, rect.y + 52, COLORS.MUTED, { font: '18px "DejaVu Sans", sans-serif' });
+        drawText(subtitle, rect.x + sz(16), rect.y + sz(52), COLORS.MUTED, { font: sfont(18) });
     }
 }
 
 function drawMenuButton(name, label, center, color) {
     const rect = {
-        x: center.x - MENU_BUTTON_SIZE.width / 2,
-        y: center.y - MENU_BUTTON_SIZE.height / 2,
-        width: MENU_BUTTON_SIZE.width,
-        height: MENU_BUTTON_SIZE.height,
+        x: center.x - sz(MENU_BUTTON_SIZE.width) / 2,
+        y: center.y - sz(MENU_BUTTON_SIZE.height) / 2,
+        width: sz(MENU_BUTTON_SIZE.width),
+        height: sz(MENU_BUTTON_SIZE.height),
     };
     state.buttons[name] = rect;
-    drawRoundedPanel(rect.x, rect.y, rect.width, rect.height, color, 18, 242);
+    drawRoundedPanel(rect.x, rect.y, rect.width, rect.height, color, sz(18), 242);
     ctx.strokeStyle = COLORS.GOLD;
     ctx.lineWidth = 2;
-    roundedRectPath(ctx, rect.x, rect.y, rect.width, rect.height, 18);
+    roundedRectPath(ctx, rect.x, rect.y, rect.width, rect.height, sz(18));
     ctx.stroke();
-    drawText(label, center.x, center.y + 10, COLORS.WHITE, {
-        font: 'bold 28px "DejaVu Sans", sans-serif',
+    drawText(label, center.x, center.y + sz(10), COLORS.WHITE, {
+        font: sfont(28, 'bold'),
         align: 'center',
         baseline: 'middle',
     });
@@ -928,93 +956,98 @@ function drawMenuButton(name, label, center, color) {
 
 function drawMenu(width, height) {
     state.buttons = {};
-    const titleRect = { x: width / 2 - 290, y: 80, width: 580, height: 100 };
+    const titleRect = { x: width / 2 - sz(290), y: sz(80), width: sz(580), height: sz(100) };
     drawPanel(titleRect, '', '', false);
     ctx.strokeStyle = COLORS.GOLD;
     ctx.lineWidth = 2;
-    roundedRectPath(ctx, titleRect.x, titleRect.y, titleRect.width, titleRect.height, 22);
+    roundedRectPath(ctx, titleRect.x, titleRect.y, titleRect.width, titleRect.height, sz(22));
     ctx.stroke();
-    drawText('Card Game', width / 2, 148, COLORS.WHITE, {
-        font: 'bold 52px "DejaVu Sans", sans-serif',
+    drawText('Card Game', width / 2, titleRect.y + sz(50), COLORS.WHITE, {
+        font: sfont(52, 'bold'),
         align: 'center',
         baseline: 'middle',
     });
 
     if (state.menuScreen === 'main') {
-        drawMenuButton('menu_play', 'Play', { x: width / 2, y: 270 }, COLORS.BLUE);
-        drawMenuButton('menu_bot', 'Play Vs. Computer', { x: width / 2, y: 364 }, COLORS.PANEL_SOFT);
-        drawMenuButton('menu_tutorial', 'Tutorial', { x: width / 2, y: 458 }, COLORS.PANEL_SOFT);
-        drawMenuButton('menu_quit', 'Quit', { x: width / 2, y: 552 }, COLORS.RED);
+        drawMenuButton('menu_play', 'Play', { x: width / 2, y: sz(270) }, COLORS.BLUE);
+        drawMenuButton('menu_bot', 'Play Vs. Computer', { x: width / 2, y: sz(364) }, COLORS.PANEL_SOFT);
+        drawMenuButton('menu_tutorial', 'Tutorial', { x: width / 2, y: sz(458) }, COLORS.PANEL_SOFT);
+        drawMenuButton('menu_quit', 'Quit', { x: width / 2, y: sz(552) }, COLORS.RED);
         return;
     }
 
     if (state.menuScreen === 'play') {
-        drawText('Create or join a room', width / 2, 200, COLORS.MUTED, {
-            font: '20px "DejaVu Sans", sans-serif',
+        drawText('Create or join a room', width / 2, sz(200), COLORS.MUTED, {
+            font: sfont(20),
             align: 'center',
             baseline: 'middle',
         });
-        drawMenuButton('play_join', 'Join Room', { x: width / 2, y: 320 }, COLORS.BLUE);
-        drawMenuButton('play_create', 'Create Room', { x: width / 2, y: 414 }, COLORS.PANEL_SOFT);
-        drawMenuButton('play_back', 'Back', { x: width / 2, y: 508 }, COLORS.PANEL);
+        drawMenuButton('play_join', 'Join Room', { x: width / 2, y: sz(320) }, COLORS.BLUE);
+        drawMenuButton('play_create', 'Create Room', { x: width / 2, y: sz(414) }, COLORS.PANEL_SOFT);
+        drawMenuButton('play_back', 'Back', { x: width / 2, y: sz(508) }, COLORS.PANEL);
         return;
     }
 
     if (state.menuScreen === 'join_room') {
-        const panel = { x: width / 2 - 310, y: height / 2 - 160, width: 620, height: 320 };
+        const panelW = Math.min(sz(620), width - 20);
+        const panelH = sz(320);
+        const panel = { x: (width - panelW) / 2, y: height / 2 - panelH / 2, width: panelW, height: panelH };
         drawPanel(panel, '', '', false);
         ctx.strokeStyle = COLORS.GOLD;
         ctx.lineWidth = 2;
-        roundedRectPath(ctx, panel.x, panel.y, panel.width, panel.height, 22);
+        roundedRectPath(ctx, panel.x, panel.y, panel.width, panel.height, sz(22));
         ctx.stroke();
-        drawText('Join Room', width / 2, panel.y + 44, COLORS.WHITE, {
-            font: 'bold 28px "DejaVu Sans", sans-serif',
+        drawText('Join Room', width / 2, panel.y + sz(44), COLORS.WHITE, {
+            font: sfont(28, 'bold'),
             align: 'center',
             baseline: 'middle',
         });
-        drawText('Enter lobby code', width / 2, panel.y + 90, COLORS.MUTED, {
-            font: '20px "DejaVu Sans", sans-serif',
+        drawText('Enter lobby code', width / 2, panel.y + sz(90), COLORS.MUTED, {
+            font: sfont(20),
             align: 'center',
             baseline: 'middle',
         });
 
-        const inputRect = { x: panel.x + 80, y: panel.y + 126, width: panel.width - 160, height: 62 };
-        drawRoundedPanel(inputRect.x, inputRect.y, inputRect.width, inputRect.height, COLORS.PANEL_SOFT, 14, 245);
+        const inputMargin = Math.min(sz(80), panelW * 0.12);
+        const inputRect = { x: panel.x + inputMargin, y: panel.y + sz(126), width: panel.width - inputMargin * 2, height: sz(62) };
+        state.buttons.join_input = inputRect;
+        drawRoundedPanel(inputRect.x, inputRect.y, inputRect.width, inputRect.height, COLORS.PANEL_SOFT, sz(14), 245);
         ctx.strokeStyle = COLORS.BLUE;
         ctx.lineWidth = 2;
-        roundedRectPath(ctx, inputRect.x, inputRect.y, inputRect.width, inputRect.height, 14);
+        roundedRectPath(ctx, inputRect.x, inputRect.y, inputRect.width, inputRect.height, sz(14));
         ctx.stroke();
-        drawText(state.joinRoomCode || '', inputRect.x + 16, inputRect.y + 34, COLORS.WHITE, {
-            font: '24px "DejaVu Sans", sans-serif',
+        drawText(state.joinRoomCode || '', inputRect.x + sz(16), inputRect.y + sz(34), COLORS.WHITE, {
+            font: sfont(24),
             baseline: 'middle',
         });
 
-        const confirmRect = { x: panel.x + 80, y: panel.y + 214, width: 210, height: 58 };
-        const cancelRect = { x: panel.x + panel.width - 290, y: panel.y + 214, width: 210, height: 58 };
+        const btnW = Math.min(sz(210), (panelW - inputMargin * 2 - sz(10)) / 2);
+        const confirmRect = { x: panel.x + inputMargin, y: panel.y + sz(214), width: btnW, height: sz(58) };
+        const cancelRect = { x: panel.x + panel.width - inputMargin - btnW, y: panel.y + sz(214), width: btnW, height: sz(58) };
         state.buttons.join_confirm = confirmRect;
         state.buttons.join_cancel = cancelRect;
-        drawRoundedPanel(confirmRect.x, confirmRect.y, confirmRect.width, confirmRect.height, COLORS.BLUE, 14, 245);
-        drawRoundedPanel(cancelRect.x, cancelRect.y, cancelRect.width, cancelRect.height, COLORS.PANEL_SOFT, 14, 245);
+        drawRoundedPanel(confirmRect.x, confirmRect.y, confirmRect.width, confirmRect.height, COLORS.BLUE, sz(14), 245);
+        drawRoundedPanel(cancelRect.x, cancelRect.y, cancelRect.width, cancelRect.height, COLORS.PANEL_SOFT, sz(14), 245);
         ctx.strokeStyle = COLORS.GOLD;
         ctx.lineWidth = 2;
-        roundedRectPath(ctx, confirmRect.x, confirmRect.y, confirmRect.width, confirmRect.height, 14);
+        roundedRectPath(ctx, confirmRect.x, confirmRect.y, confirmRect.width, confirmRect.height, sz(14));
         ctx.stroke();
-        roundedRectPath(ctx, cancelRect.x, cancelRect.y, cancelRect.width, cancelRect.height, 14);
+        roundedRectPath(ctx, cancelRect.x, cancelRect.y, cancelRect.width, cancelRect.height, sz(14));
         ctx.stroke();
-        drawText('Join', confirmRect.x + confirmRect.width / 2, confirmRect.y + 30, COLORS.WHITE, {
-            font: '20px "DejaVu Sans", sans-serif',
+        drawText('Join', confirmRect.x + confirmRect.width / 2, confirmRect.y + sz(30), COLORS.WHITE, {
+            font: sfont(20),
             align: 'center',
             baseline: 'middle',
         });
-        drawText('Cancel', cancelRect.x + cancelRect.width / 2, cancelRect.y + 30, COLORS.WHITE, {
-            font: '20px "DejaVu Sans", sans-serif',
+        drawText('Cancel', cancelRect.x + cancelRect.width / 2, cancelRect.y + sz(30), COLORS.WHITE, {
+            font: sfont(20),
             align: 'center',
             baseline: 'middle',
         });
 
         if (state.joinError) {
-            drawText(state.joinError, width / 2, panel.y + panel.height - 26, COLORS.RED, {
-                font: '18px "DejaVu Sans", sans-serif',
+            drawText(state.joinError, width / 2, panel.y + panel.height - sz(26), COLORS.RED, {
+                font: sfont(18),
                 align: 'center',
                 baseline: 'middle',
             });
@@ -1058,70 +1091,79 @@ function ensureMotion(token, target, timeNow) {
 function drawNotifications(width, height) {
     const visible = state.messages.filter(([stamp]) => now() - stamp <= 3.2);
     state.messages = visible;
-    let y = height - 118;
+    let y = height - sz(118);
     for (const [stamp, message] of visible.slice(-4)) {
         const alpha = clamp(255 - (now() - stamp) * 180, 50, 255);
         ctx.save();
-        ctx.font = '18px "DejaVu Sans", sans-serif';
+        const fsize = sfont(18);
+        ctx.font = fsize;
         ctx.globalAlpha = alpha / 255;
         const textWidth = ctx.measureText(message).width;
-        const boxWidth = Math.ceil(textWidth) + 24;
-        const boxHeight = 30;
-        drawRoundedPanel(18, y - 2, boxWidth, boxHeight, '#14181a', 14, alpha);
-        drawText(message, 30, y + 16, COLORS.WHITE, { font: '18px "DejaVu Sans", sans-serif' });
+        const boxWidth = Math.ceil(textWidth) + sz(24);
+        const boxHeight = sz(30);
+        drawRoundedPanel(sz(18), y - 2, boxWidth, boxHeight, '#14181a', sz(14), alpha);
+        drawText(message, sz(30), y + sz(16), COLORS.WHITE, { font: fsize });
         ctx.restore();
-        y -= 30;
+        y -= sz(30);
     }
 }
 
 function drawTopBars(width) {
     const turnText = state.turnPlayer === state.selfName ? 'Your turn' : `Turn: ${state.turnPlayer || 'Waiting'}`;
-    const turnRect = { x: 20, y: 20, width: 260, height: 54 };
+    const turnW = Math.min(sz(260), width * 0.38);
+    const barH = sz(54);
+    const turnRect = { x: sz(20), y: sz(20), width: turnW, height: barH };
     drawPanel(turnRect, '', '', false);
     ctx.strokeStyle = state.turnPlayer === state.selfName ? COLORS.GOLD : COLORS.BLUE;
     ctx.lineWidth = 2;
-    roundedRectPath(ctx, turnRect.x, turnRect.y, turnRect.width, turnRect.height, 18);
+    roundedRectPath(ctx, turnRect.x, turnRect.y, turnRect.width, turnRect.height, sz(18));
     ctx.stroke();
-    drawText(turnText, turnRect.x + turnRect.width / 2, turnRect.y + 31, COLORS.WHITE, {
-        font: '20px "DejaVu Sans", sans-serif',
+    drawText(turnText, turnRect.x + turnRect.width / 2, turnRect.y + barH / 2, COLORS.WHITE, {
+        font: sfont(20),
         align: 'center',
         baseline: 'middle',
     });
 
-    const timerRect = { x: width - 160, y: 20, width: 140, height: 54 };
+    const timerW = sz(140);
+    const timerRect = { x: width - timerW - sz(20), y: sz(20), width: timerW, height: barH };
     drawPanel(timerRect, '', '', false);
     const remaining = state.turnDeadline ? Math.max(0, Math.ceil(state.turnDeadline - now())) : 60;
     ctx.strokeStyle = remaining <= 10 ? COLORS.RED : COLORS.GOLD;
     ctx.lineWidth = 2;
-    roundedRectPath(ctx, timerRect.x, timerRect.y, timerRect.width, timerRect.height, 18);
+    roundedRectPath(ctx, timerRect.x, timerRect.y, timerRect.width, timerRect.height, sz(18));
     ctx.stroke();
-    drawText(String(remaining), timerRect.x + timerRect.width / 2, timerRect.y + 31, COLORS.WHITE, {
-        font: '20px "DejaVu Sans", sans-serif',
+    drawText(String(remaining), timerRect.x + timerRect.width / 2, timerRect.y + barH / 2, COLORS.WHITE, {
+        font: sfont(20),
         align: 'center',
         baseline: 'middle',
     });
 
     if (state.roomCode) {
-        const roomRect = { x: width / 2 - 110, y: 64, width: 220, height: 44 };
-        drawPanel(roomRect, '', '', false);
-        ctx.strokeStyle = COLORS.GOLD;
-        ctx.lineWidth = 2;
-        roundedRectPath(ctx, roomRect.x, roomRect.y, roomRect.width, roomRect.height, 14);
-        ctx.stroke();
-        drawText(`Room ${state.roomCode}`, roomRect.x + roomRect.width / 2, roomRect.y + 28, COLORS.MUTED, {
-            font: '18px "DejaVu Sans", sans-serif',
-            align: 'center',
-            baseline: 'middle',
-        });
+        const roomW = Math.min(sz(220), width - turnW - timerW - sz(80));
+        if (roomW > sz(80)) {
+            const roomRect = { x: width / 2 - roomW / 2, y: sz(64), width: roomW, height: sz(44) };
+            drawPanel(roomRect, '', '', false);
+            ctx.strokeStyle = COLORS.GOLD;
+            ctx.lineWidth = 2;
+            roundedRectPath(ctx, roomRect.x, roomRect.y, roomRect.width, roomRect.height, sz(14));
+            ctx.stroke();
+            drawText(`Room ${state.roomCode}`, roomRect.x + roomRect.width / 2, roomRect.y + sz(28), COLORS.MUTED, {
+                font: sfont(18),
+                align: 'center',
+                baseline: 'middle',
+            });
+        }
     }
 }
 
 function drawCenterArea(width, height) {
-    const drawRect = { x: width / 2 - 201, y: height / 2 - 66, width: BACK_CARD_SIZE.width, height: BACK_CARD_SIZE.height };
-    const playRect = { x: width / 2 + 149, y: height / 2 - 66, width: PLAY_CARD_SIZE.width, height: PLAY_CARD_SIZE.height };
+    const cardW = sz(BACK_CARD_SIZE.width);
+    const cardH = sz(BACK_CARD_SIZE.height);
+    const drawRect = { x: width / 2 - sz(201), y: height / 2 - sz(66), width: cardW, height: cardH };
+    const playRect = { x: width / 2 + sz(149), y: height / 2 - sz(66), width: sz(PLAY_CARD_SIZE.width), height: sz(PLAY_CARD_SIZE.height) };
     const pileCenter = playPileCenter(width, height);
-    state.buttons.draw = { x: drawRect.x - 14, y: drawRect.y - 14, width: drawRect.width + 28, height: drawRect.height + 28 };
-    state.buttons.play = { x: playRect.x - 14, y: playRect.y - 14, width: playRect.width + 28, height: playRect.height + 28 };
+    state.buttons.draw = { x: drawRect.x - sz(14), y: drawRect.y - sz(14), width: drawRect.width + sz(28), height: drawRect.height + sz(28) };
+    state.buttons.play = { x: playRect.x - sz(14), y: playRect.y - sz(14), width: playRect.width + sz(28), height: playRect.height + sz(28) };
     const timeNow = now();
     state.playAnimations = state.playAnimations.filter((item) => timeNow - item.startTime <= item.duration + 0.18);
     const animatingTokens = new Set(state.playAnimations.map((item) => item.token));
@@ -1130,12 +1172,12 @@ function drawCenterArea(width, height) {
     if (stackCount) {
         for (let index = 0; index < stackCount; index += 1) {
             const offset = Math.min(10, index * 3);
-            drawBackCard(drawRect.x + drawRect.width / 2 - offset, drawRect.y + drawRect.height / 2 - offset, BACK_CARD_SIZE.width, BACK_CARD_SIZE.height);
+            drawBackCard(drawRect.x + drawRect.width / 2 - offset, drawRect.y + drawRect.height / 2 - offset, cardW, cardH);
         }
     } else {
         ctx.strokeStyle = 'rgba(72, 107, 103, 0.95)';
         ctx.lineWidth = 2;
-        roundedRectPath(ctx, drawRect.x - 4, drawRect.y - 4, drawRect.width + 8, drawRect.height + 8, 14);
+        roundedRectPath(ctx, drawRect.x - 4, drawRect.y - 4, drawRect.width + 8, drawRect.height + 8, sz(14));
         ctx.stroke();
     }
 
@@ -1144,42 +1186,42 @@ function drawCenterArea(width, height) {
         const pileDraws = pileShow.map((token, index) => ({
             token,
             target: {
-                x: pileCenter.x + index * 3,
-                y: pileCenter.y - index * 3,
+                x: pileCenter.x + index * sz(3),
+                y: pileCenter.y - index * sz(3),
             },
         })).sort((left, right) => left.target.x - right.target.x);
         pileDraws.forEach(({ token, target }) => {
             const center = ensureMotion(token, target, timeNow);
-            drawCardImage(cardFace(token), center.x, center.y, PLAY_CARD_SIZE.width, PLAY_CARD_SIZE.height);
-            state.cardRects.set(token, { x: center.x - PLAY_CARD_SIZE.width / 2, y: center.y - PLAY_CARD_SIZE.height / 2, width: PLAY_CARD_SIZE.width, height: PLAY_CARD_SIZE.height });
+            drawCardImage(cardFace(token), center.x, center.y, sz(PLAY_CARD_SIZE.width), sz(PLAY_CARD_SIZE.height));
+            state.cardRects.set(token, { x: center.x - sz(PLAY_CARD_SIZE.width) / 2, y: center.y - sz(PLAY_CARD_SIZE.height) / 2, width: sz(PLAY_CARD_SIZE.width), height: sz(PLAY_CARD_SIZE.height) });
             state.lastPositions.set(token, center);
         });
     } else {
-        drawBackCard(pileCenter.x, pileCenter.y, BACK_CARD_SIZE.width, BACK_CARD_SIZE.height);
+        drawBackCard(pileCenter.x, pileCenter.y, sz(BACK_CARD_SIZE.width), sz(BACK_CARD_SIZE.height));
     }
 
     ctx.strokeStyle = 'rgba(72, 107, 103, 0.95)';
     ctx.lineWidth = 2;
-    roundedRectPath(ctx, playRect.x - 4, playRect.y - 4, playRect.width + 8, playRect.height + 8, 14);
+    roundedRectPath(ctx, playRect.x - 4, playRect.y - 4, playRect.width + 8, playRect.height + 8, sz(14));
     ctx.stroke();
 
-    drawText('DRAW', drawRect.x + drawRect.width / 2, drawRect.y + drawRect.height / 2 - 18, COLORS.WHITE, {
-        font: 'bold 28px "DejaVu Sans", sans-serif',
+    drawText('DRAW', drawRect.x + drawRect.width / 2, drawRect.y + drawRect.height / 2 - sz(18), COLORS.WHITE, {
+        font: sfont(28, 'bold'),
         align: 'center',
         baseline: 'middle',
     });
-    drawText(`cards: ${state.drawPileSize}`, drawRect.x + drawRect.width / 2, drawRect.y + drawRect.height / 2 + 28, COLORS.WHITE, {
-        font: '18px "DejaVu Sans", sans-serif',
+    drawText(`cards: ${state.drawPileSize}`, drawRect.x + drawRect.width / 2, drawRect.y + drawRect.height / 2 + sz(28), COLORS.WHITE, {
+        font: sfont(18),
         align: 'center',
         baseline: 'middle',
     });
-    drawText('PLAY', playRect.x + playRect.width / 2, playRect.y + playRect.height / 2 - 18, COLORS.WHITE, {
-        font: 'bold 28px "DejaVu Sans", sans-serif',
+    drawText('PLAY', playRect.x + playRect.width / 2, playRect.y + playRect.height / 2 - sz(18), COLORS.WHITE, {
+        font: sfont(28, 'bold'),
         align: 'center',
         baseline: 'middle',
     });
-    drawText(`cards: ${state.pile.length}`, playRect.x + playRect.width / 2, playRect.y + playRect.height / 2 + 28, COLORS.WHITE, {
-        font: '18px "DejaVu Sans", sans-serif',
+    drawText(`cards: ${state.pile.length}`, playRect.x + playRect.width / 2, playRect.y + playRect.height / 2 + sz(28), COLORS.WHITE, {
+        font: sfont(18),
         align: 'center',
         baseline: 'middle',
     });
@@ -1204,11 +1246,13 @@ function drawCenterArea(width, height) {
         ctx.save();
         ctx.globalAlpha = 1;
         ctx.translate(x, y);
+        const animW = sz(PLAY_CARD_SIZE.width);
+        const animH = sz(PLAY_CARD_SIZE.height);
         if (image && image.complete && image.naturalWidth > 0) {
-            ctx.drawImage(image, -PLAY_CARD_SIZE.width / 2, -PLAY_CARD_SIZE.height / 2, PLAY_CARD_SIZE.width, PLAY_CARD_SIZE.height);
+            ctx.drawImage(image, -animW / 2, -animH / 2, animW, animH);
         } else {
             ctx.fillStyle = '#cbb68c';
-            roundedRectPath(ctx, -PLAY_CARD_SIZE.width / 2, -PLAY_CARD_SIZE.height / 2, PLAY_CARD_SIZE.width, PLAY_CARD_SIZE.height, 10);
+            roundedRectPath(ctx, -animW / 2, -animH / 2, animW, animH, sz(10));
             ctx.fill();
         }
         ctx.restore();
@@ -1217,17 +1261,17 @@ function drawCenterArea(width, height) {
     if (currentTurnIsSelf()) {
         ctx.strokeStyle = COLORS.BLUE;
         ctx.lineWidth = 2;
-        roundedRectPath(ctx, state.buttons.draw.x, state.buttons.draw.y, state.buttons.draw.width, state.buttons.draw.height, 18);
+        roundedRectPath(ctx, state.buttons.draw.x, state.buttons.draw.y, state.buttons.draw.width, state.buttons.draw.height, sz(18));
         ctx.stroke();
         ctx.strokeStyle = state.selected ? COLORS.GOLD : COLORS.BLUE;
-        roundedRectPath(ctx, state.buttons.play.x, state.buttons.play.y, state.buttons.play.width, state.buttons.play.height, 18);
+        roundedRectPath(ctx, state.buttons.play.x, state.buttons.play.y, state.buttons.play.width, state.buttons.play.height, sz(18));
         ctx.stroke();
     }
 
     if (state.selected && currentTurnIsSelf()) {
         ctx.strokeStyle = COLORS.GOLD;
         ctx.lineWidth = 2;
-        roundedRectPath(ctx, playRect.x - 7, playRect.y - 7, playRect.width + 14, playRect.height + 14, 16);
+        roundedRectPath(ctx, playRect.x - sz(7), playRect.y - sz(7), playRect.width + sz(14), playRect.height + sz(14), sz(16));
         ctx.stroke();
     }
 }
@@ -1240,14 +1284,14 @@ function drawPlayerZone(name, slot, timeNow) {
     const hand = isSelf ? state.selfHand : [];
     const label = `${name}${name === state.selfName ? ' (you)' : ''}${state.botSeats.has(name) ? ' [bot]' : ''}`;
 
-    const panelRect = { x: slot.panel.x - 140, y: slot.panel.y - 43, width: 280, height: 86 };
+    const panelRect = { x: slot.panel.x - sz(140), y: slot.panel.y - sz(43), width: sz(280), height: sz(86) };
     drawPanel(panelRect, label, `Hand ${handCount}  Hidden ${hiddenCount}`, state.turnPlayer === name && state.phase === 'game');
 
     const hiddenShow = Math.min(hiddenCount, 3);
-    const hiddenScale = isSelf ? 1.0 : 0.84;
-    const hiddenWidth = Math.round(BACK_CARD_SIZE.width * hiddenScale);
-    const hiddenHeight = Math.round(BACK_CARD_SIZE.height * hiddenScale);
-    const hiddenSpacing = Math.max(24, Math.round(hiddenWidth * 0.58));
+    const hiddenScale = isSelf ? 1.0 : 0.72;
+    const hiddenWidth = sz(Math.round(BACK_CARD_SIZE.width * hiddenScale));
+    const hiddenHeight = sz(Math.round(BACK_CARD_SIZE.height * hiddenScale));
+    const hiddenSpacing = Math.max(sz(20), Math.round(hiddenWidth * 0.58));
     const hiddenOffset = (hiddenShow - 1) / 2;
     const hiddenDraws = [];
 
@@ -1277,12 +1321,12 @@ function drawPlayerZone(name, slot, timeNow) {
         const focus = { x: union.x - 5, y: union.y - 5, width: union.right - union.x + 10, height: union.bottom - union.y + 10 };
         ctx.strokeStyle = COLORS.GOLD;
         ctx.lineWidth = 3;
-        roundedRectPath(ctx, focus.x, focus.y, focus.width, focus.height, 14);
+        roundedRectPath(ctx, focus.x, focus.y, focus.width, focus.height, sz(14));
         ctx.stroke();
     }
 
     if (visible.length) {
-        const spacing = isSelf ? (visible.length <= 4 ? 64 : visible.length <= 7 ? 58 : 50) : 48;
+        const spacing = sz(isSelf ? (visible.length <= 4 ? 64 : visible.length <= 7 ? 58 : 50) : 40);
         const offset = (visible.length - 1) / 2;
         const renderCards = visible.map((token, index) => {
             const target = {
@@ -1300,8 +1344,11 @@ function drawPlayerZone(name, slot, timeNow) {
         });
         renderCards.forEach(({ token, target }) => {
             const center = ensureMotion(token, target, timeNow);
-            const size = isSelf ? PLAY_CARD_SIZE : SMALL_CARD_SIZE;
-            const rect = { x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height };
+            const baseSize = isSelf ? PLAY_CARD_SIZE : SMALL_CARD_SIZE;
+            const otherScale = isSelf ? 1 : 0.72;
+            const w = sz(Math.round(baseSize.width * otherScale));
+            const h = sz(Math.round(baseSize.height * otherScale));
+            const rect = { x: center.x - w / 2, y: center.y - h / 2, width: w, height: h };
             if (state.dragging && state.dragging.token === token) {
                 const drag = state.dragging.current || state.dragging.start;
                 rect.x += drag.x - state.dragging.start.x;
@@ -1309,7 +1356,7 @@ function drawPlayerZone(name, slot, timeNow) {
             }
             if (selectedTokens().includes(token)) {
                 const progress = clamp((timeNow - state.selectedAt) / 0.14, 0, 1);
-                rect.y -= Math.round(18 * (1 - (1 - progress) * (1 - progress)));
+                rect.y -= Math.round(sz(18) * (1 - (1 - progress) * (1 - progress)));
             }
             state.cardRects.set(token, rect);
             state.lastPositions.set(token, { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
@@ -1318,21 +1365,21 @@ function drawPlayerZone(name, slot, timeNow) {
     }
 
     if (isSelf) {
-        state.buttons.hand_zone = { x: slot.hand.x - 230, y: slot.hand.y - 80, width: 460, height: 160 };
-        state.buttons.visible_zone = { x: slot.visible.x - 230, y: slot.visible.y - 70, width: 460, height: 140 };
+        state.buttons.hand_zone = { x: slot.hand.x - sz(230), y: slot.hand.y - sz(80), width: sz(460), height: sz(160) };
+        state.buttons.visible_zone = { x: slot.visible.x - sz(230), y: slot.visible.y - sz(70), width: sz(460), height: sz(140) };
         if (hand.length) {
-            let spacing = 74;
+            let spacing = sz(74);
             if (hand.length > 5 && hand.length <= 8) {
-                spacing = 68;
+                spacing = sz(68);
             } else if (hand.length > 8 && hand.length <= 11) {
-                spacing = 60;
+                spacing = sz(60);
             } else if (hand.length > 11) {
-                spacing = 52;
+                spacing = sz(52);
             }
             const offset = (hand.length - 1) / 2;
-            const scale = clamp(1.0 - Math.max(0, hand.length - 8) * 0.04, 0.72, 1.0);
-            const widthScaled = Math.round(PLAY_CARD_SIZE.width * scale);
-            const heightScaled = Math.round(PLAY_CARD_SIZE.height * scale);
+            const handCardScale = clamp(1.0 - Math.max(0, hand.length - 8) * 0.04, 0.72, 1.0);
+            const widthScaled = sz(Math.round(PLAY_CARD_SIZE.width * handCardScale));
+            const heightScaled = sz(Math.round(PLAY_CARD_SIZE.height * handCardScale));
             const renderCards = hand.map((token, index) => {
                 const target = {
                     x: slot.hand.x + slot.spread.x * (index - offset) * spacing,
@@ -1353,7 +1400,7 @@ function drawPlayerZone(name, slot, timeNow) {
                 const rect = { x: center.x - widthScaled / 2, y: center.y - heightScaled / 2, width: widthScaled, height: heightScaled };
                 if (selectedTokens().includes(token)) {
                     const progress = clamp((timeNow - state.selectedAt) / 0.14, 0, 1);
-                    rect.y -= Math.round(20 * (1 - (1 - progress) * (1 - progress)));
+                    rect.y -= Math.round(sz(20) * (1 - (1 - progress) * (1 - progress)));
                 }
                 if (state.dragging && state.dragging.token === token) {
                     const drag = state.dragging.current || state.dragging.start;
@@ -1367,10 +1414,10 @@ function drawPlayerZone(name, slot, timeNow) {
         }
     } else if (handCount) {
         const backShow = Math.min(handCount, 5);
-        const backScale = 0.8;
-        const backWidth = Math.round(BACK_CARD_SIZE.width * backScale);
-        const backHeight = Math.round(BACK_CARD_SIZE.height * backScale);
-        const backSpacing = Math.max(22, Math.round(backWidth * 0.56));
+        const backScale = 0.65;
+        const backWidth = sz(Math.round(BACK_CARD_SIZE.width * backScale));
+        const backHeight = sz(Math.round(BACK_CARD_SIZE.height * backScale));
+        const backSpacing = Math.max(sz(18), Math.round(backWidth * 0.56));
         const backOffset = (backShow - 1) / 2;
         const backCards = Array.from({ length: backShow }, (_unused, index) => {
             const offsetIndex = (index - backOffset) * backSpacing;
@@ -1403,22 +1450,23 @@ function drawGameOver(width, height) {
     ctx.restore();
     const rankings = Object.entries(state.finished).sort((left, right) => left[1] - right[1]);
     const winnerName = rankings.length ? rankings[0][0] : (state.gameOverText ? state.gameOverText.replace('Winner: ', '') : '');
-    const bannerHeight = 140 + Math.max(0, rankings.length - 1) * 32;
-    const banner = { x: width / 2 - 230, y: height / 2 - 100, width: 460, height: bannerHeight };
+    const bannerHeight = sz(140) + Math.max(0, rankings.length - 1) * sz(32);
+    const bannerW = Math.min(sz(460), width - 20);
+    const banner = { x: (width - bannerW) / 2, y: height / 2 - bannerHeight / 2, width: bannerW, height: bannerHeight };
     drawPanel(banner, '', '', false);
     ctx.strokeStyle = COLORS.GOLD;
     ctx.lineWidth = 3;
-    roundedRectPath(ctx, banner.x, banner.y, banner.width, banner.height, 22);
+    roundedRectPath(ctx, banner.x, banner.y, banner.width, banner.height, sz(22));
     ctx.stroke();
-    drawText(`Winner: ${winnerName}`, width / 2, banner.y + 60, COLORS.WHITE, {
-        font: 'bold 52px "DejaVu Sans", sans-serif',
+    drawText(`Winner: ${winnerName}`, width / 2, banner.y + sz(60), COLORS.WHITE, {
+        font: sfont(52, 'bold'),
         align: 'center',
         baseline: 'middle',
     });
     rankings.slice(1).forEach(([name, place], index) => {
         const suffix = { 1: 'st', 2: 'nd', 3: 'rd' }[place] || 'th';
-        drawText(`${place}${suffix}: ${name}`, width / 2, banner.y + 100 + index * 32, COLORS.MUTED, {
-            font: '20px "DejaVu Sans", sans-serif',
+        drawText(`${place}${suffix}: ${name}`, width / 2, banner.y + sz(100) + index * sz(32), COLORS.MUTED, {
+            font: sfont(20),
             align: 'center',
             baseline: 'middle',
         });
@@ -1428,6 +1476,7 @@ function drawGameOver(width, height) {
 function drawGame() {
     const width = window.innerWidth;
     const height = window.innerHeight;
+    sc = getScale(width, height);
     drawBackground(width, height);
 
     if (state.phase === 'menu') {
@@ -1463,59 +1512,67 @@ function drawGame() {
     drawNotifications(width, height);
 
     if (state.phase === 'pregame') {
-        const readyRect = { x: width / 2 - 100, y: 18, width: 200, height: 54 };
+        const readyW = sz(200);
+        const readyH = sz(54);
+        const readyRect = { x: width / 2 - readyW / 2, y: sz(18), width: readyW, height: readyH };
         state.buttons.ready = readyRect;
-        drawRoundedPanel(readyRect.x, readyRect.y, readyRect.width, readyRect.height, state.ready ? COLORS.PANEL : COLORS.GOLD, 18, 240);
+        drawRoundedPanel(readyRect.x, readyRect.y, readyRect.width, readyRect.height, state.ready ? COLORS.PANEL : COLORS.GOLD, sz(18), 240);
         ctx.strokeStyle = COLORS.GOLD;
         ctx.lineWidth = 2;
-        roundedRectPath(ctx, readyRect.x, readyRect.y, readyRect.width, readyRect.height, 18);
+        roundedRectPath(ctx, readyRect.x, readyRect.y, readyRect.width, readyRect.height, sz(18));
         ctx.stroke();
-        drawText('READY', readyRect.x + readyRect.width / 2, readyRect.y + 31, state.ready ? COLORS.WHITE : COLORS.BLACK, {
-            font: 'bold 28px "DejaVu Sans", sans-serif',
+        drawText('READY', readyRect.x + readyRect.width / 2, readyRect.y + readyH / 2, state.ready ? COLORS.WHITE : COLORS.BLACK, {
+            font: sfont(28, 'bold'),
             align: 'center',
             baseline: 'middle',
         });
 
-        const fillRect = { x: width / 2 + 122, y: 20, width: 236, height: 50 };
+        const fillW = sz(236);
+        const fillH = sz(50);
+        const fillRect = { x: width / 2 + sz(122), y: sz(20), width: fillW, height: fillH };
         state.buttons.fill_bots = fillRect;
-        drawRoundedPanel(fillRect.x, fillRect.y, fillRect.width, fillRect.height, COLORS.PANEL, 14, 240);
+        drawRoundedPanel(fillRect.x, fillRect.y, fillRect.width, fillRect.height, COLORS.PANEL, sz(14), 240);
         ctx.strokeStyle = COLORS.BLUE;
         ctx.lineWidth = 2;
-        roundedRectPath(ctx, fillRect.x, fillRect.y, fillRect.width, fillRect.height, 14);
+        roundedRectPath(ctx, fillRect.x, fillRect.y, fillRect.width, fillRect.height, sz(14));
         ctx.stroke();
-        drawText(`${state.fillBotsEnabled ? '[x]' : '[ ]'} Fill With Bots`, fillRect.x + fillRect.width / 2, fillRect.y + 31, COLORS.WHITE, {
-            font: '18px "DejaVu Sans", sans-serif',
+        drawText(`${state.fillBotsEnabled ? '[x]' : '[ ]'} Fill Bots`, fillRect.x + fillRect.width / 2, fillRect.y + fillH / 2, COLORS.WHITE, {
+            font: sfont(18),
             align: 'center',
             baseline: 'middle',
         });
     } else if (state.phase === 'reorder') {
-        const doneRect = { x: width / 2 - 100, y: 18, width: 200, height: 54 };
+        const doneW = sz(200);
+        const doneH = sz(54);
+        const doneRect = { x: width / 2 - doneW / 2, y: sz(18), width: doneW, height: doneH };
         state.buttons.done = doneRect;
-        drawRoundedPanel(doneRect.x, doneRect.y, doneRect.width, doneRect.height, state.reorderDone ? COLORS.PANEL : COLORS.BLUE, 18, 240);
+        drawRoundedPanel(doneRect.x, doneRect.y, doneRect.width, doneRect.height, state.reorderDone ? COLORS.PANEL : COLORS.BLUE, sz(18), 240);
         ctx.strokeStyle = COLORS.BLUE;
         ctx.lineWidth = 2;
-        roundedRectPath(ctx, doneRect.x, doneRect.y, doneRect.width, doneRect.height, 18);
+        roundedRectPath(ctx, doneRect.x, doneRect.y, doneRect.width, doneRect.height, sz(18));
         ctx.stroke();
-        drawText('DONE', doneRect.x + doneRect.width / 2, doneRect.y + 31, COLORS.WHITE, {
-            font: 'bold 28px "DejaVu Sans", sans-serif',
+        drawText('DONE', doneRect.x + doneRect.width / 2, doneRect.y + doneH / 2, COLORS.WHITE, {
+            font: sfont(28, 'bold'),
             align: 'center',
             baseline: 'middle',
         });
     }
 
     if (state.selected && currentTurnIsSelf()) {
-        const focusRect = { x: width / 2 - 120, y: height / 2 - 220, width: 240, height: 42 };
-        drawRoundedPanel(focusRect.x, focusRect.y, focusRect.width, focusRect.height, COLORS.PANEL, 14, 220);
+        const focusW = Math.min(sz(300), width - 20);
+        const focusH = sz(42);
+        const focusRect = { x: (width - focusW) / 2, y: height / 2 - sz(220), width: focusW, height: focusH };
+        drawRoundedPanel(focusRect.x, focusRect.y, focusRect.width, focusRect.height, COLORS.PANEL, sz(14), 220);
         if (state.selected.kind === 'hidden') {
-            drawText('Hidden card selected', focusRect.x + focusRect.width / 2, focusRect.y + 27, COLORS.WHITE, {
-                font: '18px "DejaVu Sans", sans-serif',
+            drawText('Hidden card selected', focusRect.x + focusRect.width / 2, focusRect.y + sz(27), COLORS.WHITE, {
+                font: sfont(18),
                 align: 'center',
                 baseline: 'middle',
             });
         } else {
             const token = selectedCardToken();
-            drawText(token ? `Card focused: ${tokenLabel(token)}` : 'Card focused - press PLAY', focusRect.x + focusRect.width / 2, focusRect.y + 27, COLORS.WHITE, {
-                font: '18px "DejaVu Sans", sans-serif',
+            drawText(token ? `Selected: ${tokenLabel(token)} — tap PLAY` : 'Tap PLAY to play', focusRect.x + focusRect.width / 2, focusRect.y + sz(27), COLORS.WHITE, {
+                font: sfont(18),
                 align: 'center',
                 baseline: 'middle',
             });
@@ -1528,6 +1585,9 @@ function drawGame() {
 function onMouseDown(event) {
     if (event.button !== 0) {
         return;
+    }
+    if (!event._isTouch) {
+        isTouchInteraction = false;
     }
     const point = canvasPoint(event);
 
@@ -1575,6 +1635,14 @@ function onMouseDown(event) {
         }
 
         if (state.menuScreen === 'join_room') {
+            if (clickButton('join_input', point)) {
+                // Use a native prompt so mobile keyboards appear
+                const code = window.prompt('Enter room code:', state.joinRoomCode);
+                if (code !== null) {
+                    state.joinRoomCode = code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+                }
+                return;
+            }
             if (clickButton('join_confirm', point)) {
                 state.autoReadyAfterJoin = false;
                 state.autoDoneReorderOnce = false;
@@ -1668,7 +1736,8 @@ function onMouseUp(event) {
         return;
     }
 
-    if (moved < DRAG_THRESHOLD) {
+    const dragThreshold = isTouchInteraction ? TOUCH_DRAG_THRESHOLD : DRAG_THRESHOLD;
+    if (moved < dragThreshold) {
         if (state.phase === 'reorder') {
             moveTokenBetweenZones(token, state.selfHand.includes(token));
             emitReorder();
@@ -1729,7 +1798,41 @@ function onMouseUp(event) {
     state.dragging = null;
 }
 
-function onKeyDown(event) {
+function touchCanvasPoint(touch) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top,
+    };
+}
+
+function makeSyntheticMouseEvent(touch) {
+    return { button: 0, clientX: touch.clientX, clientY: touch.clientY, _isTouch: true };
+}
+
+function onTouchStart(event) {
+    event.preventDefault();
+    if (event.touches.length === 1) {
+        isTouchInteraction = true;
+        onMouseDown(makeSyntheticMouseEvent(event.touches[0]));
+    }
+}
+
+function onTouchMove(event) {
+    event.preventDefault();
+    if (event.touches.length === 1) {
+        onMouseMove(makeSyntheticMouseEvent(event.touches[0]));
+    }
+}
+
+function onTouchEnd(event) {
+    event.preventDefault();
+    if (event.changedTouches.length) {
+        onMouseUp(makeSyntheticMouseEvent(event.changedTouches[0]));
+    }
+}
+
+
     if (state.phase === 'menu' && state.menuScreen === 'join_room') {
         if (event.key === 'Enter') {
             state.autoReadyAfterJoin = false;
@@ -1870,6 +1973,13 @@ async function init() {
     canvas.addEventListener('mousemove', onMouseMove);
     canvas.addEventListener('mouseup', onMouseUp);
     canvas.addEventListener('mouseleave', onMouseUp);
+    // Touch support
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
+    // Prevent context menu on long-press
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
     const connectBtn = document.getElementById('connectBtn');
     if (connectBtn) {

@@ -15,6 +15,7 @@ body {
     display: block;
     width: 100vw;
     height: 100vh;
+    touch-action: none;
 }
 
 .modal {
@@ -40,8 +41,7 @@ body {
     border-radius: 20px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
     border: 2px solid #3a4a6b;
-    min-width: 400px;
-    max-width: 90%;
+    width: min(400px, 90vw);
 }
 
 .modal-content h2 {
