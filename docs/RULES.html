@@ -1,0 +1,133 @@
+<h1>Card Game Rules</h1>
+<h2>Game Setup</h2>
+<h3>Deck</h3>
+<ul>
+    <li>Uses a normal card deck with Jokers removed</li>
+    <li>Can be played with 2-n players</li>
+    <li>Add additional decks if playing with more than 4 players</li>
+</ul>
+<h3>Card Distribution (Start of Game)</h3>
+<p>Each player receives:</p>
+<ul>
+    <li><strong>3 hidden cards</strong> (face-down on the table in front of the player)</li>
+    <li><strong>3 visible cards</strong> (face-up on top of the hidden cards)</li>
+    <li><strong>5 hand cards</strong> (in hand)</li>
+</ul>
+<h3>Initial Card Swap</h3>
+<p>Before the first turn, players can swap cards between their hand and visible cards however they please, as long as
+    they end with exactly 3 visible cards and 5 hand cards.</p>
+<h3>Determining Starting Player</h3>
+<ul>
+    <li>Whoever has the lowest rank card starts (3 is lowest, since 2 is special and A is highest)</li>
+    <li><strong>Tiebreaker</strong>: If multiple players have the same lowest rank, whoever has the most of that rank
+        starts</li>
+    <li><strong>Continued tiebreaker</strong>: If still tied, compare the next rank up (4, 5, 6, etc.)</li>
+</ul>
+<h2>Turn Order</h2>
+<ul>
+    <li><strong>Clockwise</strong> turn order</li>
+    <li>Players <strong>cannot skip their turn</strong></li>
+</ul>
+<h2>Card Ranks</h2>
+<h3>Normal Ranks (Low to High)</h3>
+<p>3, 4, 5, 6, 7, 8, 9, J, Q, K, A</p>
+<h3>Special Cards</h3>
+<ul>
+    <li><strong>2</strong>: Can be played on any card</li>
+    <li><strong>A</strong>: Largest card (rank above K).</li>
+    <li><strong>10</strong>: Clears the play pile and allows the player to play again immediately (you must not draw
+        from the deck between plays; you only draw after your turn is over). Can be played on any card.</li>
+    <li><strong>4-of-a-Kind</strong>: If 4 cards of the same rank are on top of each other at any time, it acts like a
+        10 and clears the play pile. Only the player who plays the 4th card gets to play again.</li>
+</ul>
+<h2>Playing Cards</h2>
+<h3>Card Placement Rules</h3>
+<ul>
+    <li>You can only place cards of <strong>higher or equal rank</strong> on the play pile</li>
+    <li>Exception: <strong>2 and 10</strong> can be placed on any card.</li>
+    <li>You can play <strong>any number of the same rank</strong> in one turn, but you don't have to play all of them
+    </li>
+    <li>You cannot lie about being unable to play</li>
+</ul>
+<h3>Playing Hidden Cards</h3>
+<ul>
+    <li>Hidden cards are played face-down; you cannot see what rank they are until played</li>
+    <li>You choose which face-down hidden card to play (but don't know its rank beforehand)</li>
+</ul>
+<h3>Card Play Sequence</h3>
+<p>Each turn:</p>
+<ol>
+    <li>Player plays one or more cards of the same rank (or must draw if unable)</li>
+    <li>If a 10 or 4-of-a-kind is played, the play pile clears and the player plays again</li>
+    <li>Drawing happens at the end of the turn.</li>
+</ol>
+<h2>Drawing Cards</h2>
+<h3>Drawing Rules</h3>
+<ul>
+    <li>After your turn ends, you must draw cards from the deck until your hand has 5 cards again</li>
+    <li>If you cannot play any cards on your turn, you must draw the <strong>entire play pile</strong> into your hand
+    </li>
+    <li>If the deck runs out of cards, you stop drawing and your turn simply ends</li>
+</ul>
+<h2>Card Availability by State</h2>
+<p>Once your hand is empty, cards become available in this order:</p>
+<ol>
+    <li><strong>Hand cards</strong> (5 cards)</li>
+    <li><strong>Visible cards</strong> (3 cards) - once hand is empty</li>
+    <li><strong>Hidden cards</strong> (3 cards) - once visible cards are empty (played face-down, unknown rank)</li>
+</ol>
+<h3>Special Rule for Clearing Hand</h3>
+<p>If your last cards in your hand are the same rank as some cards in your visible cards, you can play all of them at
+    once. This simultaneously clears your hand and plays from the visible cards.</p>
+<p>Example: If you have 2 Kings in hand and there are 2 Kings in your visible cards, and the play pile has a rank lower
+    than king, you can play all 4 Kings at once, which would clear the play pile and let you play again.</p>
+<h2>Winning</h2>
+<ul>
+    <li>You win when you play all your cards. (hand cards, then visible, then hidden).</li>
+    <li>There exist 2nd and 3rd place and so on. Whoever is last loses.</li>
+</ul>
+<h2>Key Summary</h2>
+<ul>
+    <li><strong>Clockwise</strong> play with <strong>no skipping</strong></li>
+    <li>Play cards of <strong>equal or higher rank</strong> (2 and 10 always playable)</li>
+    <li>10 and 4-of-a-kind <strong>clear the pile and let you play again</strong></li>
+    <li>Draw to 5 cards <strong>at the end of your turn</strong></li>
+    <li>Can't play? <strong>Draw the entire play pile</strong></li>
+    <li>Play hand → visible → hidden (face-down)</li>
+    <li><strong>A is highest</strong>, 3 is lowest (2 and 10 are special)</li>
+</ul>
+<h2>Implementation Clarifications (Appendix)</h2>
+<ul>
+    <li>
+        <p>A player may only perform ONE play action per turn.</p>
+    </li>
+    <li>
+        <p>A play action consists of placing one or more cards of the same rank onto the play pile in a single move.</p>
+    </li>
+    <li>
+        <p>After completing a play action, the turn normally ends and the player draws up to 5 cards.</p>
+    </li>
+    <li>
+        <p>Exception: If a player plays a 10 or completes a 4-of-a-kind, the play pile is cleared immediately and that
+            player is granted ONE additional play action before the turn ends.</p>
+    </li>
+    <li>
+        <p>Extra play actions do not stack. A player cannot chain multiple consecutive plays beyond what is explicitly
+            granted by a 10 or a 4-of-a-kind.</p>
+    </li>
+    <li>
+        <p>Hidden cards, visible cards, and hand cards are used in order (hand → visible → hidden), but only one play
+            action may be performed per turn regardless of card source.</p>
+    </li>
+    <li>
+        <p>If a player cannot make a legal play action, they must draw the entire play pile and end their turn.</p>
+    </li>
+    <li>
+        <p>The play pile is cleared only by a 10 or a completed 4-of-a-kind, and otherwise persists between turns as a
+            single stack.</p>
+    </li>
+    <li>
+        <p>Drawing always occurs only at the end of a turn (including after any bonus action granted by a reset effect).
+        </p>
+    </li>
+</ul>
