@@ -1832,7 +1832,7 @@ function onTouchEnd(event) {
     }
 }
 
-
+function onKeyDown() {
     if (state.phase === 'menu' && state.menuScreen === 'join_room') {
         if (event.key === 'Enter') {
             state.autoReadyAfterJoin = false;
@@ -1857,26 +1857,6 @@ function onTouchEnd(event) {
             event.preventDefault();
         }
         return;
-    }
-
-    if (event.key === 'Escape') {
-        if (state.phase === 'menu') {
-            if (state.menuScreen === 'join_room') {
-                state.menuScreen = 'play';
-                state.joinError = null;
-                event.preventDefault();
-                return;
-            }
-            if (state.menuScreen === 'play') {
-                state.menuScreen = 'main';
-                event.preventDefault();
-                return;
-            }
-        }
-        if (state.selected) {
-            state.selected = null;
-            event.preventDefault();
-        }
     }
 }
 
